@@ -351,13 +351,14 @@ ability to refer to this context you need to use the context within the
 thread as a context manager:
 
 ```python
-    def spawn_thread(ctx, func):
-        def wrapper():
-            with ctx:
-                func()
-        t = threading.Thread(target=wrapper)
-        t.start()
-        return t
+def spawn_thread(ctx, func):
+    def wrapper():
+        with ctx:
+            func()
+
+    t = threading.Thread(target=wrapper)
+    t.start()
+    return t
 ```
 
 Now the thread function can access the context like the main thread would

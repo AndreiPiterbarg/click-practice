@@ -226,6 +226,7 @@ of the file unchanged.
 def cli(fin):
     pass
 
+
 @cli.result_callback()
 def process_pipeline(processors, fin):
     iterator = (x.rstrip("\r\n") for x in input)
@@ -236,25 +237,31 @@ def process_pipeline(processors, fin):
     for item in iterator:
         click.echo(item)
 
+
 @cli.command("upper")
 def make_uppercase():
     def processor(iterator):
         for line in iterator:
             yield line.upper()
+
     return processor
+
 
 @cli.command("lower")
 def make_lowercase():
     def processor(iterator):
         for line in iterator:
             yield line.lower()
+
     return processor
+
 
 @cli.command("strip")
 def make_strip():
     def processor(iterator):
         for line in iterator:
             yield line.strip()
+
     return processor
 ```
 
@@ -306,11 +313,10 @@ you're not satisfied with the defaults.
 The default map can be nested arbitrarily for each subcommand:
 
 ```python
-
-    default_map = {
-        "debug": True,  # default for a top level option
-        "runserver": {"port": 5000}  # default for a subcommand
-    }
+default_map = {
+    "debug": True,  # default for a top level option
+    "runserver": {"port": 5000},  # default for a subcommand
+}
 ```
 
 The default map can be provided when the script is invoked, or

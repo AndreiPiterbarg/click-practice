@@ -388,6 +388,7 @@ any subcommands finish, the context's resources are cleaned up.
 def cli(ctx, repo_home):
     ctx.obj = ctx.with_resource(Repo(repo_home))
 
+
 @cli.command()
 @click.pass_obj
 def log(obj):

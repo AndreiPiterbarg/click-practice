@@ -27,6 +27,7 @@ import importlib.util
 import os
 import click
 
+
 class PluginGroup(click.Group):
     def __init__(self, name=None, plugin_folder="commands", **kwargs):
         super().__init__(name=name, **kwargs)
@@ -49,9 +50,8 @@ class PluginGroup(click.Group):
         spec.loader.exec_module(module)
         return module.cli
 
-cli = PluginGroup(
-    plugin_folder=os.path.join(os.path.dirname(__file__), "commands")
-)
+
+cli = PluginGroup(plugin_folder=os.path.join(os.path.dirname(__file__), "commands"))
 
 if __name__ == "__main__":
     cli()
@@ -61,8 +61,7 @@ Custom classes can also be used with decorators:
 
 ```python
 @click.group(
-    cls=PluginGroup,
-    plugin_folder=os.path.join(os.path.dirname(__file__), "commands")
+    cls=PluginGroup, plugin_folder=os.path.join(os.path.dirname(__file__), "commands")
 )
 def cli():
     pass
@@ -115,18 +114,19 @@ command called `push`, it would accept `pus` as an alias (so long as it was uniq
 It can be used like this:
 
 ```python
+@click.group(cls=AliasedGroup)
+def cli():
+    pass
 
-    @click.group(cls=AliasedGroup)
-    def cli():
-        pass
 
-    @cli.command
-    def push():
-        pass
+@cli.command
+def push():
+    pass
 
-    @cli.command
-    def pop():
-        pass
+
+@cli.command
+def pop():
+    pass
 ```
 
 See the [alias example](https://github.com/pallets/click/tree/main/examples/aliases) in Click's repository for another example.
