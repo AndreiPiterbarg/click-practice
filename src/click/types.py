@@ -715,7 +715,10 @@ class _NumberRangeBase(
         ...
 
     def _describe_range(self) -> str:
-        """Describe the range for use in help text."""
+        """Describe the range for use in help text. Empty if unbounded."""
+        if self.min is None and self.max is None:
+            return ""
+
         if self.min is None:
             op = "<" if self.max_open else "<="
             return f"x{op}{self.max}"
@@ -729,8 +732,16 @@ class _NumberRangeBase(
         return f"{self.min}{lop}x{rop}{self.max}"
 
     def __repr__(self) -> str:
-        clamp = " clamped" if self.clamp else ""
-        return f"<{type(self).__name__} {self._describe_range()}{clamp}>"
+        parts = [type(self).__name__]
+        range_str = self._describe_range()
+
+        if range_str:
+            parts.append(range_str)
+
+        if self.clamp:
+            parts.append("clamped")
+
+        return f"<{' '.join(parts)}>"
 
 
 class IntParamType(_NumberParamTypeBase[t.SupportsInt | t.SupportsIndex, int]):
@@ -751,6 +762,9 @@ class IntRange(_NumberRangeBase[int, int], IntParamType):
 
     If ``clamp`` is enabled, a value outside the range is clamped to the
     boundary instead of failing.
+
+    .. versionchanged:: 8.6.0
+        Without ``min`` or ``max``, help text shows no range.
 
     .. versionchanged:: 8.0
         Added the ``min_open`` and ``max_open`` parameters.
@@ -784,6 +798,9 @@ class FloatRange(_NumberRangeBase[float, float], FloatParamType):
     If ``clamp`` is enabled, a value outside the range is clamped to the
     boundary instead of failing. This is not supported if either
     boundary is marked ``open``.
+
+    .. versionchanged:: 8.6.0
+        Without ``min`` or ``max``, help text shows no range.
 
     .. versionchanged:: 8.0
         Added the ``min_open`` and ``max_open`` parameters.

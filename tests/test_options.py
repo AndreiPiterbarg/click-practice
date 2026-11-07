@@ -3966,9 +3966,6 @@ def test_help_extra_items(runner, kwargs, expect):
     assert expect in result.output
 
 
-@pytest.mark.xfail(
-    strict=True, reason="An unbounded IntRange is described as 'x<=None'."
-)
 def test_help_unbounded_range_not_shown(runner):
     @click.command()
     @click.option("--value", type=click.IntRange(), help="A number.")

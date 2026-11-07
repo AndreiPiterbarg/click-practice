@@ -214,7 +214,7 @@ class ProgressBar(t.Generic[V]):
                 chars[
                     int(
                         (math.cos(self.pos * self.time_per_iteration) / 2.0 + 0.5)
-                        * self.width
+                        * (len(chars) - 1)
                     )
                 ] = self.fill_char
             bar = "".join(chars)
@@ -953,11 +953,9 @@ else:
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                 sys.stdout.flush()
-
-                if f is not None:
-                    f.close()
-        except termios.error:
-            pass
+        finally:
+            if f is not None:
+                f.close()
 
     def getchar(echo: bool) -> str:
         with raw_terminal() as fd:
