@@ -3928,3 +3928,73 @@ def test_flag_value_on_option_with_zero_or_one_args(flag_type, args, expect_outp
     result = runner.invoke(cmd, args)
     assert result.exit_code == 0
     assert result.output == expect_output
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"is_flag": True, "flag_value": "x"}, {"type": int}, {"count": True}],
+)
+def test_secondary_opts_require_bool_flag(kwargs):
+    with pytest.raises(TypeError, match="Secondary flag is not valid"):
+        click.Option(["--on/--off"], **kwargs)
+
+
+def test_bool_flag_prompt_with_hide_input():
+    with pytest.raises(TypeError, match="'prompt' with 'hide_input'"):
+        click.Option(["--flag/--no-flag"], prompt=True, hide_input=True)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expect"),
+    [
+        (
+            {"show_envvar": True, "envvar": ["APP_A", "APP_B"]},
+            "[env var: APP_A, APP_B]",
+        ),
+        ({"required": True}, "[required]"),
+        ({"type": click.IntRange(0, 5), "required": True}, "[0<=x<=5; required]"),
+    ],
+)
+def test_help_extra_items(runner, kwargs, expect):
+    @click.command()
+    @click.option("--value", **kwargs)
+    def cli(value):
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert expect in result.output
+
+
+@pytest.mark.xfail(
+    strict=True, reason="An unbounded IntRange is described as 'x<=None'."
+)
+def test_help_unbounded_range_not_shown(runner):
+    @click.command()
+    @click.option("--value", type=click.IntRange(), help="A number.")
+    def cli(value):
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert "None" not in result.output
+
+
+def test_unset_bool_flag_resolves_to_false_through_callback():
+    seen = []
+
+    def callback(ctx, param, value):
+        seen.append(value)
+        return "from callback"
+
+    option = click.Option(["--flag"], is_flag=True, callback=callback)
+    ctx = click.Context(click.Command("cli", params=[option]))
+
+    assert option.process_value(ctx, UNSET) == "from callback"
+    assert seen == [False]
+
+
+def test_unset_bool_flag_resolves_to_false_without_callback():
+    option = click.Option(["--flag"], is_flag=True)
+    ctx = click.Context(click.Command("cli", params=[option]))
+
+    assert option.process_value(ctx, UNSET) is False

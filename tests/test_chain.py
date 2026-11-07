@@ -243,3 +243,28 @@ def test_group_chaining(runner):
     result = runner.invoke(cli, ["l1a", "l2a", "l1b"])
     assert not result.exception
     assert result.output.splitlines() == ["cli=", "l1a=", "l2a=", "l1b="]
+
+
+def test_chained_result_callbacks(runner):
+    @click.group(chain=True)
+    def cli():
+        pass
+
+    @cli.command()
+    def a():
+        return "a"
+
+    @cli.command()
+    def b():
+        return "b"
+
+    @cli.result_callback()
+    def join(results):
+        return "+".join(results)
+
+    @cli.result_callback()
+    def show(value):
+        click.echo(f"<{value}>")
+
+    result = runner.invoke(cli, ["a", "b"])
+    assert result.output == "<a+b>\n"

@@ -1226,3 +1226,8 @@ def test_argument_custom_class_can_override_type_cast_value_and_never_sees_unset
     result = runner.invoke(cmd, pass_argv)
     assert not result.exception
     assert result.exit_code == 0
+
+
+def test_get_error_hint_without_context():
+    argument = click.Argument(["src"])
+    assert argument.get_error_hint(None) == "'SRC'"
