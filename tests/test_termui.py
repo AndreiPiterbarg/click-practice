@@ -2033,9 +2033,11 @@ def test_progressbar_format_bar_indeterminate_fill_at_edge():
 
 def test_progressbar_autowidth_shrink_clears_line(monkeypatch):
     columns = [80]
-    monkeypatch.setattr(
-        shutil, "get_terminal_size", lambda: os.terminal_size((columns[0], 24))
-    )
+
+    def get_terminal_size(fallback=(80, 24)):
+        return os.terminal_size((columns[0], 24))
+
+    monkeypatch.setattr(shutil, "get_terminal_size", get_terminal_size)
     bar = _tty_progressbar(
         monkeypatch, range(4), width=0, bar_template="%(bar)s|%(info)s", color=True
     )
