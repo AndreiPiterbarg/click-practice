@@ -11,6 +11,7 @@ from click.core import Command
 from click.core import Group
 from click.core import Option
 from click.shell_completion import add_completion_class
+from click.shell_completion import BashComplete
 from click.shell_completion import CompletionItem
 from click.shell_completion import FishComplete
 from click.shell_completion import PowerShellComplete
@@ -615,3 +616,123 @@ def test_powershell_format_completion_escapes_help():
     # produced by ZshComplete.
     item = CompletionItem("--at")
     assert pc.format_completion(item) == "plain\n--at\n_"
+
+
+def test_full_complete_unknown_shell(runner):
+    cli = Group("cli", commands=[Command("a")])
+    result = runner.invoke(cli, env={"_CLI_COMPLETE": "nosuchshell_source"})
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+@pytest.mark.parametrize("instruction", ["bash_nosuch", "zsh", "fish_"])
+def test_shell_complete_unknown_instruction(runner, instruction):
+    cli = Group("cli", commands=[Command("a")])
+    result = runner.invoke(cli, env={"_CLI_COMPLETE": instruction})
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+class _FakeCompletedProcess:
+    def __init__(self, stdout: bytes) -> None:
+        self.stdout = stdout
+
+
+def _patch_bash(monkeypatch, version: bytes | None) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    if version is None:
+        monkeypatch.setattr("shutil.which", lambda name: None)
+    else:
+        monkeypatch.setattr("shutil.which", lambda name: f"/fake/bin/{name}")
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return _FakeCompletedProcess(version)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    return calls
+
+
+def test_bash_check_version_no_bash(monkeypatch, capsys):
+    calls = _patch_bash(monkeypatch, None)
+    BashComplete._check_version()
+    assert calls == []
+    assert "Couldn't detect Bash version" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("version", [b"", b"unknown\n", b"5\n", b"5.1\n"])
+def test_bash_check_version_unparsable(monkeypatch, capsys, version):
+    calls = _patch_bash(monkeypatch, version)
+    BashComplete._check_version()
+    assert len(calls) == 1
+    assert calls[0][0] == "/fake/bin/bash"
+    assert "Couldn't detect Bash version" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("version", [b"3.2.57(1)-release\n", b"4.3.48(1)-release\n"])
+def test_bash_check_version_too_old(monkeypatch, capsys, version):
+    _patch_bash(monkeypatch, version)
+    BashComplete._check_version()
+    assert "older than 4.4" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "version", [b"4.4.20(1)-release\n", b"5.0.17(1)-release\n", b"5.2.21(1)-release\n"]
+)
+def test_bash_check_version_supported(monkeypatch, capsys, version):
+    _patch_bash(monkeypatch, version)
+    BashComplete._check_version()
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.xfail(
+    strict=True, reason="_check_version compares version parts as strings"
+)
+@pytest.mark.parametrize("version", [b"4.10.0(1)-release\n", b"10.0.0(1)-release\n"])
+def test_bash_check_version_multi_digit(monkeypatch, capsys, version):
+    _patch_bash(monkeypatch, version)
+    BashComplete._check_version()
+    assert capsys.readouterr().err == ""
+
+
+def test_full_source_bash_warns_without_bash(runner, monkeypatch):
+    _patch_bash(monkeypatch, None)
+    cli = Group("cli", commands=[Command("a")])
+    result = runner.invoke(cli, env={"_CLI_COMPLETE": "bash_source"})
+    assert result.exit_code == 0
+    assert "Couldn't detect Bash version" in result.stderr
+    assert "_CLI_COMPLETE=bash_complete" in result.stdout
+
+
+def test_group_unknown_subcommand():
+    cli = Group("cli", commands=[Command("a", params=[Option(["-x"])]), Command("b")])
+    assert _get_words(cli, ["nope"], "") == ["a", "b"]
+    assert _get_words(cli, ["nope"], "-") == ["--help"]
+
+
+def test_chained_unknown_subcommand():
+    cli = Group(
+        "cli",
+        chain=True,
+        commands=[Command("a", params=[Option(["-x"])]), Command("b")],
+    )
+    assert _get_words(cli, ["a"], "-") == ["-x", "--help"]
+    assert _get_words(cli, ["a", "nope"], "") == ["a", "b"]
+    assert _get_words(cli, ["a", "nope"], "-") == ["--help"]
+
+
+def test_option_value_joined_with_equals():
+    cli = Command(
+        "cli",
+        params=[
+            Option(["--name"], type=Choice(["alpha", "beta"])),
+            Argument(["arg"], type=Choice(["x=1", "y=2"])),
+        ],
+    )
+    assert _get_words(cli, [], "--name=a") == ["alpha"]
+    assert _get_words(cli, [], "--name=") == ["alpha", "beta"]
+    # A lone "=" is treated as an empty incomplete value.
+    assert _get_words(cli, ["--name"], "=") == ["alpha", "beta"]
+    # "=" in a value that isn't an option is left alone.
+    assert _get_words(cli, [], "x=") == ["x=1"]
