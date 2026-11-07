@@ -778,3 +778,90 @@ def test_propagate_opt_prefixes():
     ctx = click.Context(click.Command("test2"), parent=parent)
 
     assert ctx._opt_prefixes == {"-", "--", "!"}
+
+
+def test_abort(runner):
+    @click.command()
+    @click.pass_context
+    def cli(ctx):
+        ctx.abort()
+        click.echo("unreachable")
+
+    result = runner.invoke(cli)
+    assert result.exit_code == 1
+    assert result.output == "Aborted!\n"
+
+
+def test_invoke_command_without_callback():
+    @click.command()
+    @click.pass_context
+    def cli(ctx):
+        ctx.invoke(click.Command("other"))
+
+    with pytest.raises(TypeError, match="does not have a callback"):
+        cli.main([], standalone_mode=False)
+
+
+def test_forward_requires_command():
+    @click.command()
+    @click.pass_context
+    def cli(ctx):
+        ctx.forward(lambda: None)
+
+    with pytest.raises(TypeError, match="Callback is not a command."):
+        cli.main([], standalone_mode=False)
+
+
+def test_forward_keyword_overrides_param(runner):
+    @click.command()
+    @click.option("--count", default=1)
+    @click.option("--name", default="a")
+    def other(count, name):
+        click.echo(f"{count} {name}")
+
+    @click.command()
+    @click.option("--count", default=1)
+    @click.option("--name", default="a")
+    @click.pass_context
+    def cli(ctx, count, name):
+        ctx.forward(other, count=5)
+
+    result = runner.invoke(cli, ["--count", "2", "--name", "b"])
+    assert result.output == "5 b\n"
+
+
+def test_find_root(runner):
+    @click.group()
+    @click.pass_context
+    def cli(ctx):
+        ctx.obj = ctx
+
+    @cli.group()
+    def mid():
+        pass
+
+    @mid.command()
+    @click.pass_context
+    def leaf(ctx):
+        assert ctx.find_root() is ctx.obj
+        assert ctx.parent.find_root() is ctx.obj
+        assert ctx.obj.find_root() is ctx.obj
+        click.echo("ok")
+
+    result = runner.invoke(cli, ["mid", "leaf"])
+    assert result.output == "ok\n"
+
+
+def test_usage_error_from_callback_gets_context(runner):
+    def callback(ctx, param, value):
+        raise click.UsageError("bad value")
+
+    @click.command()
+    @click.option("--opt", callback=callback)
+    def cli(opt):
+        pass
+
+    result = runner.invoke(cli, ["--opt", "x"])
+    assert result.exit_code == 2
+    assert result.output.startswith("Usage: cli [OPTIONS]\n")
+    assert "Error: bad value" in result.output

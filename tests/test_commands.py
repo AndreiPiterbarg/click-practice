@@ -1,8 +1,14 @@
+import errno
+import io
+import os
 import re
+import sys
+import types
 
 import pytest
 
 import click
+from click.utils import _PacifyFlushWrapper
 
 
 def test_other_command_invoke(runner):
@@ -713,3 +719,160 @@ def test_suggest_possible_commands(runner, value, expect):
 
     result = runner.invoke(cli, [value])
     assert expect in result.output
+
+
+def test_short_help_is_dedented(runner):
+    @click.group()
+    def cli():
+        pass
+
+    @cli.command(short_help="\n    Do the\n    thing.\n    ")
+    def sub():
+        pass
+
+    assert sub.get_short_help_str() == "Do the\nthing."
+    result = runner.invoke(cli, ["--help"])
+    assert "  sub  Do the thing.\n" in result.output
+
+
+def test_epilog_is_dedented(runner):
+    @click.command(epilog="\n        See the docs.\n        ")
+    def cli():
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert result.output.endswith("\n\n  See the docs.\n")
+
+
+def test_help_without_options_has_no_options_section():
+    @click.command(add_help_option=False)
+    def cli():
+        """Help text."""
+
+    with click.Context(cli, info_name="cli") as ctx:
+        assert cli.get_help(ctx) == "Usage: cli [OPTIONS]\n\n  Help text."
+
+
+def test_main_defaults_to_sys_argv_and_program_name(monkeypatch):
+    @click.command()
+    @click.argument("name")
+    @click.pass_context
+    def cli(ctx, name):
+        return ctx.info_name, name
+
+    monkeypatch.setattr(sys, "argv", [os.path.join("bin", "tool"), "world"])
+    monkeypatch.setitem(sys.modules, "__main__", types.ModuleType("__main__"))
+    assert cli(standalone_mode=False) == ("tool", "world")
+
+
+def test_main_broken_pipe_exits_quietly(monkeypatch):
+    @click.command()
+    def cli():
+        raise OSError(errno.EPIPE, "Broken pipe")
+
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([])
+
+    assert exc_info.value.code == 1
+    assert isinstance(sys.stdout, _PacifyFlushWrapper)
+    assert isinstance(sys.stderr, _PacifyFlushWrapper)
+    assert sys.stdout.getvalue() == ""
+    assert sys.stderr.getvalue() == ""
+
+
+def test_main_reraises_other_os_errors(runner):
+    @click.command()
+    def cli():
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    result = runner.invoke(cli)
+    assert isinstance(result.exception, OSError)
+    assert result.exception.errno == errno.ENOSPC
+
+
+@pytest.mark.parametrize(
+    ("prog_name", "complete_var", "env_var"),
+    [
+        ("my-tool.py", None, "_MY_TOOL_PY_COMPLETE"),
+        ("my-tool", "CUSTOM_COMPLETE", "CUSTOM_COMPLETE"),
+    ],
+)
+def test_main_shell_completion_var(runner, prog_name, complete_var, env_var):
+    @click.command()
+    def cli():
+        click.echo("ran")
+
+    result = runner.invoke(
+        cli,
+        prog_name=prog_name,
+        complete_var=complete_var,
+        env={env_var: "bash_source"},
+    )
+    assert result.exit_code == 0
+    assert "ran" not in result.output
+    assert f"{env_var}=bash_complete" in result.output
+
+
+def test_add_command_without_name():
+    group = click.Group()
+
+    with pytest.raises(TypeError, match="Command has no name."):
+        group.add_command(click.Command(None))
+
+
+class _GhostGroup(click.Group):
+    def list_commands(self, ctx):
+        return ["ghost", "real"]
+
+    def get_command(self, ctx, cmd_name):
+        if cmd_name == "real":
+            return click.Command("real", help="A real command.")
+        return None
+
+
+def test_help_skips_commands_get_command_does_not_return(runner):
+    result = runner.invoke(_GhostGroup("cli"), ["--help"])
+    assert result.exit_code == 0
+    assert "  real  A real command.\n" in result.output
+    assert "ghost" not in result.output
+
+
+def test_to_info_dict_skips_commands_get_command_does_not_return():
+    group = _GhostGroup("cli")
+
+    with click.Context(group) as ctx:
+        info = group.to_info_dict(ctx)
+
+    assert list(info["commands"]) == ["real"]
+
+
+def test_explicit_subcommand_metavar(runner):
+    @click.group(subcommand_metavar="TASK", invoke_without_command=True)
+    def cli():
+        pass
+
+    result = runner.invoke(cli, ["--help"])
+    assert result.output.splitlines()[0] == "Usage: cli [OPTIONS] TASK"
+
+
+def test_explicit_no_args_is_help_with_invoke_without_command(runner):
+    @click.group(invoke_without_command=True, no_args_is_help=True)
+    def cli():
+        click.echo("ran")
+
+    result = runner.invoke(cli, [])
+    assert "ran" not in result.output
+    assert result.output.startswith("Usage: cli [OPTIONS] [COMMAND] [ARGS]...")
+
+
+def test_base_command_alias_instance_and_subclass_checks():
+    with pytest.warns(DeprecationWarning, match="'BaseCommand' is deprecated"):
+        base_command = click.core.BaseCommand
+
+    assert isinstance(click.Command("cmd"), base_command)
+    assert issubclass(click.Group, base_command)
+    assert not isinstance(object(), base_command)
+    assert not issubclass(object, base_command)
