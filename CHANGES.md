@@ -25,6 +25,9 @@ Unreleased
 - {meth}`CliRunner.invoke` accepts a new `context_settings` argument, to allow
   passing settings to the {class}`Context` of the command which cannot be given as extra
   keyword arguments like `color`. {issue}`2110` {pr}`3896`
+- {class}`NoSuchCommand` suggestions come from {meth}`Group.list_commands`, so
+  {class}`CommandCollection` and groups that load commands lazily suggest their
+  commands for a misspelled name. {pr}`8`
 
 ## Version 8.5.1
 

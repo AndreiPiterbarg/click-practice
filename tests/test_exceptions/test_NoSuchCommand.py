@@ -181,10 +181,6 @@ def test_raised_by_command_collection(runner):
     assert exc.cmd is cli
 
 
-@pytest.mark.xfail(
-    reason="resolve_command suggests from self.commands, not list_commands()",
-    strict=True,
-)
 def test_command_collection_suggests_source_commands(runner):
     cli = click.CommandCollection(sources=[_make_group()])
     result = runner.invoke(cli, ["pus"], standalone_mode=False)
@@ -193,10 +189,6 @@ def test_command_collection_suggests_source_commands(runner):
     assert exc.possibilities == ["push"]
 
 
-@pytest.mark.xfail(
-    reason="resolve_command suggests from self.commands, not list_commands()",
-    strict=True,
-)
 def test_lazy_group_suggests_listed_commands(runner):
     @click.command()
     def push():
