@@ -11,6 +11,8 @@ import click
         (click.FloatRange(max=1.5, max_open=True), "1.49", 1.49),
         (click.FloatRange(0.5, clamp=True), "-0.0", 0.5),
         (click.FloatRange(max=1.5, clamp=True), "inf", 1.5),
+        (click.FloatRange(0.5, 1.5, clamp=True), "2", 1.5),
+        (click.FloatRange(0.5, 1.5, clamp=True), "1.0", 1.0),
     ],
 )
 def test_range(type, value, expect):

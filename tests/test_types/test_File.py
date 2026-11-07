@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 import click
@@ -30,3 +32,28 @@ def test_file_surrogates(type, tmp_path):
     )
     with pytest.raises(click.BadParameter, match=match):
         type.convert(path, None, None)
+
+
+def test_lazy_file_without_ctx(tmp_path):
+    """Without a context the lazy file is returned unopened and the caller is
+    responsible for closing it."""
+    path = tmp_path / "out.txt"
+    f = click.File(mode="w", lazy=True).convert(os.fspath(path), None, None)
+    assert isinstance(f, click.utils._LazyFile)
+    assert not path.exists()
+    f.write("hello")
+    f.close()
+    assert path.read_text() == "hello"
+
+
+def test_file_without_ctx(tmp_path):
+    """Without a context the opened file is returned and the caller is
+    responsible for closing it."""
+    path = tmp_path / "in.txt"
+    path.write_text("hello")
+    f = click.File(mode="r").convert(os.fspath(path), None, None)
+
+    try:
+        assert f.read() == "hello"
+    finally:
+        f.close()
