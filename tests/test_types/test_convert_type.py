@@ -94,3 +94,23 @@ def test_explicit_dict_type_rejects_string():
     assert isinstance(param_type, click.types.FuncParamType)
     with pytest.raises(click.BadParameter):
         param_type.convert("abc", None, None)
+
+
+def test_convert_type_rejects_uninstantiated_param_type():
+    with pytest.raises(AssertionError, match="uninstantiated parameter type"):
+        click.types.convert_type(click.types.StringParamType)
+
+
+def test_option_rejects_uninstantiated_param_type():
+    with pytest.raises(AssertionError, match="uninstantiated parameter type"):
+        click.Option(["--name"], type=click.types.IntParamType)
+
+
+def test_convert_type_wraps_callable_instance():
+    def parse(value):
+        return value.upper()
+
+    param_type = click.types.convert_type(parse)
+    assert isinstance(param_type, click.types.FuncParamType)
+    assert param_type.func is parse
+    assert param_type.convert("git", None, None) == "GIT"

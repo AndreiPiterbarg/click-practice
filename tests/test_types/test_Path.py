@@ -188,3 +188,10 @@ def test_path_type(runner, cls, expect):
 
 def test_path_converted_type_parameter_at_runtime():
     assert t.get_args(click.Path[pathlib.Path]) == (pathlib.Path,)
+
+
+def test_path_type_str_decodes_bytes():
+    value = os.fsencode("\u00e9t\u00e9")
+    rv = click.Path(path_type=str).convert(value, None, None)
+    assert rv == "\u00e9t\u00e9"
+    assert isinstance(rv, str)

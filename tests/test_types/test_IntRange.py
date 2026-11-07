@@ -15,6 +15,8 @@ import click
         (click.IntRange(max=5, clamp=True), "6", 5),
         (click.IntRange(0, min_open=True, clamp=True), "0", 1),
         (click.IntRange(max=5, max_open=True, clamp=True), "5", 4),
+        (click.IntRange(0, 5, clamp=True), "9", 5),
+        (click.IntRange(0, 5, clamp=True), "3", 3),
     ],
 )
 def test_range(type, value, expect):
@@ -36,3 +38,14 @@ def test_range_fail(type, value, expect):
         type.convert(value, None, None)
 
     assert expect in exc_info.value.message
+
+
+def test_range_clamp_to_max(runner):
+    @click.command()
+    @click.option("--count", type=click.IntRange(0, 5, clamp=True))
+    def cli(count):
+        click.echo(count)
+
+    result = runner.invoke(cli, ["--count", "9"])
+    assert result.exception is None
+    assert result.output == "5\n"

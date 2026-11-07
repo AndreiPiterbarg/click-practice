@@ -22,3 +22,11 @@ def test_param_type_subclass_omitting_input_parameter():
     doubling = DoublingType()
     assert doubling("21") == 42
     assert doubling(None) is None
+
+
+def test_param_type_default_convert_returns_value():
+    class MetadataOnlyType(click.ParamType[str]):
+        name = "metadata"
+
+    value = object()
+    assert MetadataOnlyType().convert(value, None, None) is value
