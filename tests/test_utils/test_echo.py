@@ -1,3 +1,4 @@
+import io
 import sys
 from io import BytesIO
 from io import StringIO
@@ -166,3 +167,21 @@ def test_echo_writing_to_standard_error(capfd, monkeypatch):
     out, err = capfd.readouterr()
     assert out == ""
     assert err == "Pause to stderr\n"
+
+
+def test_echo_bytes_to_binary_file():
+    f = BytesIO()
+    click.echo(b"\xf6", file=f)
+    assert f.getvalue() == b"\xf6\n"
+
+
+def test_echo_bytes_to_text_buffer_wrapper():
+    f = io.TextIOWrapper(BytesIO(), encoding="ascii")
+    f.write("a")
+    click.echo(b"\xf6", file=f)
+    assert f.buffer.getvalue() == b"a\xf6\n"
+
+
+def test_echo_bytes_without_binary_writer():
+    with pytest.raises(TypeError):
+        click.echo(b"data", file=StringIO())

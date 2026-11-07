@@ -115,3 +115,38 @@ def test_open_file_atomic_permissions_new_file(runner, tmp_path):
     result = runner.invoke(cli, [str(new)])
     assert result.exception is None
     assert stat.S_IMODE(os.stat(new).st_mode) == permissions
+
+
+def test_open_file_lazy_write(runner, tmp_path):
+    path = tmp_path / "lazy.txt"
+
+    @click.command()
+    @click.argument("filename")
+    def cli(filename):
+        f = click.open_file(filename, "w", lazy=True)
+        assert isinstance(f, click.utils._LazyFile)
+        assert not path.exists()
+
+        with f:
+            f.write("lazy")
+
+    result = runner.invoke(cli, [str(path)])
+    assert result.exception is None
+    assert path.read_text() == "lazy"
+
+
+def test_open_file_lazy_read_checks_early(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        click.open_file(tmp_path / "missing.txt", lazy=True)
+
+
+def test_open_file_lazy_atomic(tmp_path):
+    path = tmp_path / "atomic.txt"
+    path.write_text("old")
+
+    f = click.open_file(path, "w", lazy=True, atomic=True)
+    f.write("new")
+    assert path.read_text() == "old"
+
+    f.close()
+    assert path.read_text() == "new"
