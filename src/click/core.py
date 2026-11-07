@@ -2113,6 +2113,13 @@ class Group(Command):
     def resolve_command(
         self, ctx: Context, args: list[str]
     ) -> tuple[str | None, Command | None, list[str]]:
+        """Look up the subcommand named by the first item in ``args``.
+
+        .. versionchanged:: 8.6.0
+            Suggestions for an unknown command come from
+            :meth:`list_commands`, so they include commands from
+            :class:`CommandCollection` sources and lazy-loaded commands.
+        """
         cmd_name = make_str(args[0])
 
         # Get the command
@@ -2133,7 +2140,9 @@ class Group(Command):
         if cmd is None and not ctx.resilient_parsing:
             if _split_opt(cmd_name)[0]:
                 self.parse_args(ctx, args)
-            raise NoSuchCommand(cmd_name, possibilities=self.commands, ctx=ctx)
+            raise NoSuchCommand(
+                cmd_name, possibilities=self.list_commands(ctx), ctx=ctx
+            )
         return cmd_name if cmd else None, cmd, args[1:]
 
     def shell_complete(self, ctx: Context, incomplete: str) -> list[CompletionItem]:
