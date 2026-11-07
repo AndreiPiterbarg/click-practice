@@ -82,6 +82,14 @@ def test_type_missing_message_appended_to_message():
     )
 
 
+def test_type_missing_message_after_message_ending_in_period():
+    param = click.Option(["--color"], type=click.Choice(["red", "blue"]))
+    exc = click.MissingParameter("Pick one.", param=param)
+    assert exc.format_message() == (
+        "Missing option '--color'. Pick one. Choose from:\n\tred,\n\tblue"
+    )
+
+
 def test_str_with_message():
     exc = click.MissingParameter("Set it in the config.")
     assert str(exc) == "Set it in the config."
@@ -91,6 +99,11 @@ def test_str_without_message():
     param = click.Option(["--name"])
     exc = click.MissingParameter(param=param)
     assert str(exc) == "Missing parameter: name"
+
+
+def test_str_without_message_or_param():
+    exc = click.MissingParameter()
+    assert str(exc) == "Missing parameter"
 
 
 def test_raised_for_required_option(runner):

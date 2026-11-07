@@ -13,6 +13,8 @@ import click
         (click.FLOAT, "FLOAT"),
         (click.BOOL, "BOOL"),
         (click.UUID, "UUID"),
+        (click.IntRange(), "<IntRange>"),
+        (click.IntRange(clamp=True), "<IntRange clamped>"),
         (click.IntRange(0, 5), "<IntRange 0<=x<=5>"),
         (click.IntRange(0, 5, clamp=True), "<IntRange 0<=x<=5 clamped>"),
         (click.IntRange(0, 5, min_open=True, max_open=True), "<IntRange 0<x<5>"),

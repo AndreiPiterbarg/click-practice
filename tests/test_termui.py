@@ -1,6 +1,7 @@
 import contextlib
 import gc
 import io
+import math
 import os
 import pathlib
 import platform
@@ -2018,17 +2019,15 @@ def test_progressbar_format_bar_indeterminate_zero_width():
     assert bar.format_bar() == "#"
 
 
-@pytest.mark.xfail(
-    raises=IndexError,
-    strict=True,
-    reason="The bouncing fill index can reach width, one past the last cell.",
-)
 def test_progressbar_format_bar_indeterminate_fill_at_edge():
     bar = _unsized_progressbar(width=10)
     # cos(pos * time_per_iteration) == 1 puts the fill at index width.
     bar.pos = 0
     bar.avg = [1.0]
     assert bar.format_bar() == "         #"
+    # cos(pi) == -1 puts the fill at the first cell.
+    bar.pos = math.pi
+    assert bar.format_bar() == "#         "
 
 
 def test_progressbar_autowidth_shrink_clears_line(monkeypatch):
@@ -2504,14 +2503,10 @@ def test_raw_terminal_stdin_not_tty_opens_dev_tty(monkeypatch):
 
 
 @pytest.mark.skipif(WIN, reason="Tests the termios based raw_terminal.")
-@pytest.mark.xfail(
-    raises=RuntimeError,
-    strict=True,
-    reason="raw_terminal swallows termios.error before yielding.",
-)
-def test_raw_terminal_termios_error_propagates(monkeypatch):
+@pytest.mark.parametrize("stdin_tty", [True, False])
+def test_raw_terminal_termios_error_propagates(monkeypatch, stdin_tty):
     termios = click._termui_impl.termios
-    _FakeTerminal(monkeypatch, stdin_tty=True)
+    terminal = _FakeTerminal(monkeypatch, stdin_tty=stdin_tty)
 
     def tcgetattr(fd):
         raise termios.error("not a terminal")
@@ -2521,6 +2516,21 @@ def test_raw_terminal_termios_error_propagates(monkeypatch):
     with pytest.raises(termios.error):
         with click.termui.raw_terminal():
             pass
+
+    assert all(tty_file.closed for tty_file in terminal.opened)
+
+
+@pytest.mark.skipif(WIN, reason="Tests the termios based raw_terminal.")
+def test_raw_terminal_body_termios_error_propagates(monkeypatch):
+    termios = click._termui_impl.termios
+    terminal = _FakeTerminal(monkeypatch, stdin_tty=True)
+
+    with pytest.raises(termios.error):
+        with click.termui.raw_terminal():
+            raise termios.error("from body")
+
+    drain = termios.TCSADRAIN
+    assert terminal.calls[-1] == ("tcsetattr", 10, drain, "old settings")
 
 
 def _fake_unix_getchar_input(monkeypatch, data, stdout_tty):

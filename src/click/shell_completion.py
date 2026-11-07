@@ -410,7 +410,7 @@ class BashComplete(ShellComplete):
         if match is not None:
             major, minor = match.groups()
 
-            if major < "4" or major == "4" and minor < "4":
+            if (int(major), int(minor)) < (4, 4):
                 echo(
                     _(
                         "Shell completion is not supported for Bash"

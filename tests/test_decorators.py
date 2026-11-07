@@ -193,18 +193,8 @@ def test_version_option_detects_package_name(
 
 @pytest.mark.parametrize(
     "package",
-    [
-        None,
-        pytest.param(
-            "",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=AssertionError,
-                reason="'python -m' on a top-level module sets __package__ to ''"
-                " and importlib.metadata.version('') raises ValueError",
-            ),
-        ),
-    ],
+    # 'python -m' on a top-level module sets __package__ to "".
+    [None, ""],
 )
 def test_version_option_main_without_package_errors(runner, package) -> None:
     cli = _build_cli_in_module(

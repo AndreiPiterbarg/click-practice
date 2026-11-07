@@ -969,6 +969,10 @@ def getchar(echo: bool = False) -> str:
     function might wait for a second character and then return both at once.
     This is because certain Unicode characters look like special-key markers.
 
+    .. versionchanged:: 8.6.0
+        Raise ``termios.error`` if the terminal cannot be configured,
+        instead of ``RuntimeError``.
+
     .. versionadded:: 2.0
 
     :param echo: if set to `True`, the character read will also show up on

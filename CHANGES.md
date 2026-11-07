@@ -28,6 +28,23 @@ Unreleased
 - {class}`NoSuchCommand` suggestions come from {meth}`Group.list_commands`, so
   {class}`CommandCollection` and groups that load commands lazily suggest their
   commands for a misspelled name. {pr}`8`
+- Bash shell completion compares the Bash version numerically, so Bash 4.10 and
+  10.0 no longer get the "older than 4.4" warning. {pr}`16`
+- {func}`version_option` under `python -m` on a top-level module raises the
+  "Could not determine the version" `RuntimeError` instead of `ValueError`.
+  {pr}`16`
+- An {class}`IntRange` or {class}`FloatRange` with no bounds no longer shows
+  `[x<=None]` in help, and its repr omits the range. {pr}`16`
+- {class}`MissingParameter` no longer doubles the period when its message ends
+  with one and the type adds a hint, and `str()` with no message and no
+  parameter returns `Missing parameter` instead of `Missing parameter: None`.
+  {pr}`16`
+- {func}`raw_terminal` and {func}`getchar` raise `termios.error` when the
+  terminal cannot be configured, instead of `RuntimeError: generator didn't
+  yield`, close `/dev/tty` in that case, and no longer swallow a
+  `termios.error` raised inside the `with` block. {pr}`16`
+- A {func}`progressbar` without a length no longer raises `IndexError` when the
+  moving fill reaches the end of the bar. {pr}`16`
 
 ## Version 8.5.1
 

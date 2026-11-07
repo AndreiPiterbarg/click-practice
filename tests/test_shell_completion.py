@@ -686,9 +686,6 @@ def test_bash_check_version_supported(monkeypatch, capsys, version):
     assert capsys.readouterr().err == ""
 
 
-@pytest.mark.xfail(
-    strict=True, reason="_check_version compares version parts as strings"
-)
 @pytest.mark.parametrize("version", [b"4.10.0(1)-release\n", b"10.0.0(1)-release\n"])
 def test_bash_check_version_multi_digit(monkeypatch, capsys, version):
     _patch_bash(monkeypatch, version)

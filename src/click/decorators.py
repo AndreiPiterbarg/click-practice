@@ -475,6 +475,11 @@ def version_option(
     .. versionchanged:: 8.4.2
         When ``package_name`` does not match an installed distribution,
         Click now resolves it as an import (top-level module).
+
+    .. versionchanged:: 8.6.0
+        An empty detected package name, as from ``python -m`` on a
+        top-level module, raises ``RuntimeError`` instead of
+        ``ValueError``.
     """
     if message is None:
         message = _("%(prog)s, version %(version)s")
@@ -507,7 +512,7 @@ def version_option(
         if prog_name is None:
             prog_name = ctx.find_root().info_name
 
-        if version is None and package_name is not None:
+        if version is None and package_name:
             import importlib.metadata
 
             try:

@@ -160,6 +160,11 @@ class MissingParameter(BadParameter):
     """Raised if click required an option or argument but it was not
     provided when invoking the script.
 
+    .. versionchanged:: 8.6.0
+        Don't double the period after a message that ends with one, and
+        ``str()`` without a message or parameter name is
+        ``Missing parameter``.
+
     .. versionadded:: 4.0
 
     :param param_type: a string that indicates the type of the parameter.
@@ -203,7 +208,10 @@ class MissingParameter(BadParameter):
             )
             if msg_extra:
                 if msg:
-                    msg += f". {msg_extra}"
+                    if not msg.endswith("."):
+                        msg += "."
+
+                    msg += f" {msg_extra}"
                 else:
                     msg = msg_extra
 
@@ -222,11 +230,15 @@ class MissingParameter(BadParameter):
         return f"{missing}{param_hint}.{msg}"
 
     def __str__(self) -> str:
-        if not self.message:
-            param_name = self.param.name if self.param else None
-            return _("Missing parameter: {param_name}").format(param_name=param_name)
-        else:
+        if self.message:
             return self.message
+
+        if self.param is not None and self.param.name:
+            return _("Missing parameter: {param_name}").format(
+                param_name=self.param.name
+            )
+
+        return _("Missing parameter")
 
 
 class NoSuchOption(UsageError):
