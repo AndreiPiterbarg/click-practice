@@ -15,6 +15,8 @@
 - No new dependencies when the standard library works.
 - Warnings are errors in tests (`filterwarnings = error`). Don't silence them.
 - Wrap Markdown at 80 columns.
+- When `make_pass_decorator` cannot find the object, the RuntimeError it raises
+  should suggest passing `ensure=True`.
 
 ## Changes
 - User-visible changes need an entry in CHANGES.md (top unreleased version,
