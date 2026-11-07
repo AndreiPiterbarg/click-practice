@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import webbrowser
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,7 @@ from click._termui_impl import Editor
 from click._utils import UNSET
 from click.exceptions import BadParameter
 from click.exceptions import MissingParameter
+from click.utils import _LazyFile
 
 
 class FakeClock:
@@ -1974,3 +1976,751 @@ def test_hide_input_value_never_leaks_when_err_true(runner):
     result = runner.invoke(cli, input="leaky\n", mix_stderr=False)
     assert "leaky" not in result.stdout
     assert "leaky" not in result.stderr
+
+
+def _tty_progressbar(monkeypatch, iterable, **kwargs):
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    return click._termui_impl.ProgressBar(iterable, file=io.StringIO(), **kwargs)
+
+
+def _unsized_progressbar(**kwargs):
+    items = (item for item in [1, 2, 3])
+    return click._termui_impl.ProgressBar(items, file=io.StringIO(), **kwargs)
+
+
+def test_progressbar_format_pos_without_length():
+    bar = _unsized_progressbar()
+    bar.pos = 2
+    assert bar.length is None
+    assert bar.format_pos() == "2"
+
+
+@pytest.mark.parametrize(
+    ("finished", "avg", "expected"),
+    [
+        pytest.param(True, [], "##########", id="finished"),
+        pytest.param(False, [], "          ", id="no timing yet"),
+        pytest.param(False, [1.0], "  #       ", id="bouncing fill"),
+    ],
+)
+def test_progressbar_format_bar_indeterminate(finished, avg, expected):
+    bar = _unsized_progressbar(width=10)
+    bar.pos = 2
+    bar.finished = finished
+    bar.avg = avg
+    assert bar.format_bar() == expected
+
+
+def test_progressbar_format_bar_indeterminate_zero_width():
+    bar = _unsized_progressbar(width=0)
+    assert bar.format_bar() == " "
+    bar.avg = [1.0]
+    assert bar.format_bar() == "#"
+
+
+@pytest.mark.xfail(
+    raises=IndexError,
+    strict=True,
+    reason="The bouncing fill index can reach width, one past the last cell.",
+)
+def test_progressbar_format_bar_indeterminate_fill_at_edge():
+    bar = _unsized_progressbar(width=10)
+    # cos(pos * time_per_iteration) == 1 puts the fill at index width.
+    bar.pos = 0
+    bar.avg = [1.0]
+    assert bar.format_bar() == "         #"
+
+
+def test_progressbar_autowidth_shrink_clears_line(monkeypatch):
+    columns = [80]
+
+    def get_terminal_size(fallback=(80, 24)):
+        return os.terminal_size((columns[0], 24))
+
+    monkeypatch.setattr(shutil, "get_terminal_size", get_terminal_size)
+    bar = _tty_progressbar(
+        monkeypatch, range(4), width=0, bar_template="%(bar)s|%(info)s", color=True
+    )
+    bar.render_progress()
+    assert bar.width == 80 - len("|  0%")
+    first_max_width = bar.max_width
+    assert first_max_width == 80
+
+    columns[0] = 100
+    bar.render_progress()
+    assert bar.width == 100 - len("|  0%")
+    assert bar.max_width == 100
+
+    columns[0] = 40
+    bar.file.seek(0)
+    bar.file.truncate()
+    bar.update(1)
+    assert bar.width == 40 - len("| 25%")
+    clear = click._termui_impl.BEFORE_BAR + " " * 100
+    assert bar.file.getvalue().startswith(clear + click._termui_impl.BEFORE_BAR)
+    assert bar.max_width == 40
+
+
+def test_progressbar_without_stdout_uses_stringio(monkeypatch):
+    monkeypatch.setattr(click._termui_impl, "_default_text_stdout", lambda: None)
+    bar = click._termui_impl.ProgressBar(range(3))
+    assert isinstance(bar.file, io.StringIO)
+
+
+def test_progressbar_make_step_zero_position_timing(monkeypatch):
+    fake_clock = FakeClock()
+    monkeypatch.setattr(click._termui_impl.time, "time", fake_clock.time)
+    bar = click._termui_impl.ProgressBar(range(10), file=io.StringIO())
+    fake_clock.advance_time(3)
+    bar.make_step(0)
+    assert bar.avg == [3]
+    assert bar.eta_known
+
+
+def test_progressbar_generator_outside_with():
+    bar = click._termui_impl.ProgressBar(range(3), file=io.StringIO())
+    with pytest.raises(RuntimeError, match="with block"):
+        next(bar.generator())
+
+
+@pytest.mark.parametrize(
+    ("color", "expected"),
+    [(False, "ab"), (True, click.style("a", fg="red") + "b")],
+)
+def test_pager_writer_writelines(color, expected):
+    stream = io.StringIO()
+    writer = click._termui_impl._PagerWriter(stream, color=color)
+    writer.writelines([click.style("a", fg="red"), "b"])
+    assert stream.getvalue() == expected
+
+
+def test_pager_writer_delegates_attributes():
+    stream = io.StringIO("data")
+    writer = click._termui_impl._PagerWriter(stream, color=False)
+    assert writer.getvalue() == "data"
+    assert writer.closed is False
+
+
+def test_resolve_pager_command_empty():
+    assert click._termui_impl._resolve_pager_command([]) is None
+
+
+@pytest.mark.parametrize("term", ["dumb", "emacs"])
+def test_get_pager_file_dumb_terminal_uses_nullpager(monkeypatch, term):
+    stream = io.StringIO()
+    monkeypatch.delitem(click._termui_impl.os.environ, "PAGER", raising=False)
+    monkeypatch.setitem(click._termui_impl.os.environ, "TERM", term)
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: True)
+    monkeypatch.setattr(click._termui_impl, "_default_text_stdout", lambda: stream)
+
+    def fail_popen(*args, **kwargs):
+        raise AssertionError("no pager process should start")
+
+    monkeypatch.setattr(subprocess, "Popen", fail_popen)
+
+    with click.get_pager_file() as pager:
+        pager.write("hello\n")
+
+    assert stream.getvalue() == "hello\n"
+
+
+class _BrokenPipeStdin(io.StringIO):
+    def close(self):
+        super().close()
+        raise BrokenPipeError()
+
+
+class _InterruptedPagerProcess(_FakePagerProcess):
+    def __init__(self, argv, **kwargs):
+        super().__init__(argv, **kwargs)
+        self.stdin = _BrokenPipeStdin()
+        self.wait_calls = 0
+
+    def wait(self):
+        self.wait_calls += 1
+        if self.wait_calls == 1:
+            raise KeyboardInterrupt()
+        return 0
+
+
+def test_pipepager_ignores_broken_pipe_and_interrupts(monkeypatch):
+    processes = []
+
+    def fake_popen(*args, **kwargs):
+        process = _InterruptedPagerProcess(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    cmd_path = pathlib.Path("/tests/pager")
+
+    with click._termui_impl._pipepager(cmd_path, []) as (stdin, _):
+        stdin.write("hello")
+        raise BrokenPipeError()
+
+    (process,) = processes
+    assert process.stdin.closed
+    assert process.wait_calls == 2
+
+
+@pytest.mark.parametrize(
+    ("environ", "win", "available", "expected"),
+    [
+        pytest.param(
+            {"VISUAL": "code", "EDITOR": "ed"}, False, [], "code", id="visual"
+        ),
+        pytest.param({"EDITOR": "ed"}, False, [], "ed", id="editor"),
+        pytest.param({"VISUAL": "", "EDITOR": "ed"}, False, [], "ed", id="empty"),
+        pytest.param({}, True, ["vim"], "notepad", id="windows"),
+        pytest.param(
+            {}, False, ["vim", "sensible-editor"], "sensible-editor", id="sensible"
+        ),
+        pytest.param({}, False, ["nano", "vim"], "vim", id="vim"),
+        pytest.param({}, False, ["nano"], "nano", id="nano"),
+        pytest.param({}, False, [], "vi", id="vi"),
+    ],
+)
+def test_editor_get_editor_fallbacks(monkeypatch, environ, win, available, expected):
+    monkeypatch.delenv("VISUAL", raising=False)
+    monkeypatch.delenv("EDITOR", raising=False)
+    for key, value in environ.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(click._termui_impl, "WIN", win)
+
+    def fake_which(name):
+        if name in available:
+            return f"/usr/bin/{name}"
+        return None
+
+    monkeypatch.setattr(shutil, "which", fake_which)
+    assert Editor().get_editor() == expected
+
+
+def test_editor_get_editor_explicit(monkeypatch):
+    monkeypatch.setenv("VISUAL", "code")
+    assert Editor(editor="ed").get_editor() == "ed"
+
+
+def _fake_edit_files(monkeypatch, seen, new_content=None):
+    def edit_files(self, filenames):
+        (name,) = filenames
+        with open(name, "rb") as f:
+            seen.append(f.read())
+        if new_content is not None:
+            with open(name, "wb") as f:
+                f.write(new_content)
+
+    monkeypatch.setattr(Editor, "edit_files", edit_files)
+
+
+@pytest.mark.parametrize(
+    ("text", "win", "written", "new_content", "expected"),
+    [
+        pytest.param(None, False, b"", b"new\n", "new\n", id="none"),
+        pytest.param("", False, b"", b"new\n", "new\n", id="empty"),
+        pytest.param("a", False, b"a\n", b"b\r\n", "b\n", id="text newline"),
+        pytest.param(
+            "a\nb", True, b"\xef\xbb\xbfa\r\nb\r\n", b"c\r\n", "c\n", id="windows"
+        ),
+        pytest.param(b"a", False, b"a", b"b\r\n", b"b\r\n", id="bytes"),
+        pytest.param(bytearray(b"a"), False, b"a", b"b", b"b", id="bytearray"),
+    ],
+)
+def test_editor_edit_data(monkeypatch, text, win, written, new_content, expected):
+    monkeypatch.setattr(click._termui_impl, "WIN", win)
+    seen = []
+    _fake_edit_files(monkeypatch, seen, new_content)
+    assert Editor().edit(text) == expected
+    assert seen == [written]
+
+
+@pytest.mark.parametrize(
+    ("require_save", "expected"), [(True, None), (False, "unchanged\n")]
+)
+def test_editor_edit_require_save(monkeypatch, require_save, expected):
+    seen = []
+    _fake_edit_files(monkeypatch, seen)
+    assert Editor(require_save=require_save).edit("unchanged") == expected
+
+
+def test_editor_edit_removes_temp_file(monkeypatch):
+    names = []
+
+    def edit_files(self, filenames):
+        names.extend(filenames)
+        raise click.ClickException("failed")
+
+    monkeypatch.setattr(Editor, "edit_files", edit_files)
+
+    with pytest.raises(click.ClickException):
+        Editor(extension=".md").edit("text")
+
+    (name,) = names
+    assert name.endswith(".md")
+    assert not os.path.exists(name)
+
+
+class _FakeLauncher:
+    """Record the commands ``open_url`` would run instead of running them."""
+
+    def __init__(self, monkeypatch, *, returncode=0, error=None):
+        self.calls = []
+        self.returncode = returncode
+        self.error = error
+        monkeypatch.setattr(subprocess, "Popen", self.popen)
+        monkeypatch.setattr(subprocess, "call", self.call)
+
+    def _run(self, args, kwargs):
+        self.calls.append((args, kwargs))
+        if self.error is not None:
+            raise self.error
+
+    def popen(self, args, **kwargs):
+        self._run(args, kwargs)
+        return self
+
+    def call(self, args, **kwargs):
+        self._run(args, kwargs)
+        return self.returncode
+
+    def wait(self):
+        return self.returncode
+
+
+def _set_platform(monkeypatch, platform_name, win=False, cygwin=False):
+    monkeypatch.setattr(sys, "platform", platform_name)
+    monkeypatch.setattr(click._termui_impl, "WIN", win)
+    monkeypatch.setattr(click._termui_impl, "CYGWIN", cygwin)
+
+
+@pytest.mark.parametrize(
+    ("wait", "locate", "expected"),
+    [
+        (False, False, ["open", "/tmp/a b.txt"]),
+        (True, False, ["open", "-W", "/tmp/a b.txt"]),
+        (False, True, ["open", "-R", "/tmp/a b.txt"]),
+        (True, True, ["open", "-W", "-R", "/tmp/a b.txt"]),
+    ],
+)
+def test_launch_darwin(monkeypatch, wait, locate, expected):
+    _set_platform(monkeypatch, "darwin")
+    launcher = _FakeLauncher(monkeypatch, returncode=3)
+    assert click.launch("file:///tmp/a%20b.txt", wait=wait, locate=locate) == 3
+    ((args, kwargs),) = launcher.calls
+    assert args == expected
+    assert kwargs["stderr"].name == "/dev/null"
+    assert kwargs["stderr"].closed
+
+
+def test_launch_darwin_keeps_non_file_url(monkeypatch):
+    _set_platform(monkeypatch, "darwin")
+    launcher = _FakeLauncher(monkeypatch)
+    assert click.launch("https://example.com/a%20b") == 0
+    ((args, _),) = launcher.calls
+    assert args == ["open", "https://example.com/a%20b"]
+
+
+@pytest.mark.parametrize(("error", "expected"), [(None, 4), (OSError(), 127)])
+def test_launch_windows_locate(monkeypatch, error, expected):
+    _set_platform(monkeypatch, "win32", win=True)
+    launcher = _FakeLauncher(monkeypatch, returncode=4, error=error)
+    assert click.launch("file:///C:/a%20b.txt", locate=True) == expected
+    ((args, _),) = launcher.calls
+    assert args == ["explorer", "/select,", "/C:/a b.txt"]
+
+
+@pytest.mark.parametrize(("error", "expected"), [(None, 0), (OSError(), 127)])
+def test_launch_windows_startfile(monkeypatch, error, expected):
+    _set_platform(monkeypatch, "win32", win=True)
+    launcher = _FakeLauncher(monkeypatch)
+    started = []
+
+    def startfile(url):
+        started.append(url)
+        if error is not None:
+            raise error
+
+    monkeypatch.setattr(os, "startfile", startfile, raising=False)
+    assert click.launch("file:///C:/a%20b.txt", wait=True) == expected
+    assert started == ["file:///C:/a%20b.txt"]
+    assert launcher.calls == []
+
+
+@pytest.mark.parametrize(
+    ("url", "wait", "locate", "expected"),
+    [
+        ("https://example.com", False, False, ["cygstart", "https://example.com"]),
+        ("https://example.com", True, False, ["cygstart", "-w", "https://example.com"]),
+        ("file:///tmp/dir/a%20b.txt", True, True, ["cygstart", "/tmp/dir"]),
+    ],
+)
+def test_launch_cygwin(monkeypatch, url, wait, locate, expected):
+    _set_platform(monkeypatch, "cygwin", cygwin=True)
+    launcher = _FakeLauncher(monkeypatch, returncode=5)
+    assert click.launch(url, wait=wait, locate=locate) == 5
+    ((args, _),) = launcher.calls
+    assert args == expected
+
+
+def test_launch_cygwin_missing_command(monkeypatch):
+    _set_platform(monkeypatch, "cygwin", cygwin=True)
+    _FakeLauncher(monkeypatch, error=OSError())
+    assert click.launch("https://example.com") == 127
+
+
+@pytest.mark.parametrize(
+    ("url", "wait", "locate", "expected_url", "expected_rv"),
+    [
+        ("https://example.com", False, False, "https://example.com", 0),
+        ("https://example.com", True, False, "https://example.com", 6),
+        ("file:///tmp/a%20b.txt", False, False, "/tmp/a b.txt", 0),
+        ("file:///tmp/dir/a%20b.txt", False, True, "/tmp/dir", 0),
+        ("a.txt", False, True, ".", 0),
+    ],
+)
+def test_launch_xdg_open(monkeypatch, url, wait, locate, expected_url, expected_rv):
+    _set_platform(monkeypatch, "linux")
+    launcher = _FakeLauncher(monkeypatch, returncode=6)
+    assert click.launch(url, wait=wait, locate=locate) == expected_rv
+    ((args, _),) = launcher.calls
+    assert args == ["xdg-open", expected_url]
+
+
+@pytest.mark.parametrize(
+    ("url", "wait", "locate", "expected_rv", "expected_opened"),
+    [
+        ("https://example.com", False, False, 0, ["https://example.com"]),
+        ("http://example.com", False, False, 0, ["http://example.com"]),
+        ("https://example.com", True, False, 1, []),
+        ("https://example.com/dir/page", False, True, 1, []),
+        ("file:///tmp/a.txt", False, False, 1, []),
+    ],
+)
+def test_launch_xdg_open_missing_falls_back_to_webbrowser(
+    monkeypatch, url, wait, locate, expected_rv, expected_opened
+):
+    _set_platform(monkeypatch, "linux")
+    _FakeLauncher(monkeypatch, error=OSError())
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+    assert click.launch(url, wait=wait, locate=locate) == expected_rv
+    assert opened == expected_opened
+
+
+@pytest.mark.parametrize(
+    ("ch", "win", "exc"),
+    [
+        ("\x03", False, KeyboardInterrupt),
+        ("\x03", True, KeyboardInterrupt),
+        ("\x04", False, EOFError),
+        ("\x04", True, None),
+        ("\x1a", True, EOFError),
+        ("\x1a", False, None),
+        ("a", False, None),
+    ],
+)
+def test_translate_ch_to_exc(monkeypatch, ch, win, exc):
+    monkeypatch.setattr(click._termui_impl, "WIN", win)
+    if exc is None:
+        assert click._termui_impl._translate_ch_to_exc(ch) is None
+    else:
+        with pytest.raises(exc):
+            click._termui_impl._translate_ch_to_exc(ch)
+
+
+class _FakeTerminal:
+    """Record the ``termios``/``tty`` calls made by ``raw_terminal``."""
+
+    def __init__(self, monkeypatch, *, stdin_tty):
+        self.calls = []
+        self.opened = []
+        termios = click._termui_impl.termios
+        tty = click._termui_impl.tty
+        monkeypatch.setattr(termios, "tcgetattr", self.tcgetattr)
+        monkeypatch.setattr(termios, "tcsetattr", self.tcsetattr)
+        monkeypatch.setattr(tty, "setraw", self.setraw)
+        monkeypatch.setattr(click._termui_impl, "isatty", lambda _: stdin_tty)
+        monkeypatch.setattr(click._termui_impl, "open", self.open, raising=False)
+        monkeypatch.setattr(sys, "stdin", self)
+
+    def fileno(self):
+        return 10
+
+    def tcgetattr(self, fd):
+        self.calls.append(("tcgetattr", fd))
+        return "old settings"
+
+    def tcsetattr(self, fd, when, settings):
+        self.calls.append(("tcsetattr", fd, when, settings))
+
+    def setraw(self, fd):
+        self.calls.append(("setraw", fd))
+
+    def open(self, path):
+        tty_file = _FakeTtyFile(path)
+        self.opened.append(tty_file)
+        return tty_file
+
+
+class _FakeTtyFile:
+    def __init__(self, path):
+        self.path = path
+        self.closed = False
+
+    def fileno(self):
+        return 20
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.skipif(WIN, reason="Tests the termios based raw_terminal.")
+def test_raw_terminal_stdin_tty(monkeypatch):
+    terminal = _FakeTerminal(monkeypatch, stdin_tty=True)
+
+    with click.termui.raw_terminal() as fd:
+        assert fd == 10
+        assert terminal.calls == [("tcgetattr", 10), ("setraw", 10)]
+
+    drain = click._termui_impl.termios.TCSADRAIN
+    assert terminal.calls[-1] == ("tcsetattr", 10, drain, "old settings")
+    assert terminal.opened == []
+
+
+@pytest.mark.skipif(WIN, reason="Tests the termios based raw_terminal.")
+def test_raw_terminal_stdin_not_tty_opens_dev_tty(monkeypatch):
+    terminal = _FakeTerminal(monkeypatch, stdin_tty=False)
+
+    with pytest.raises(ValueError):
+        with click.termui.raw_terminal() as fd:
+            assert fd == 20
+            raise ValueError()
+
+    (tty_file,) = terminal.opened
+    assert tty_file.path == "/dev/tty"
+    assert tty_file.closed
+    drain = click._termui_impl.termios.TCSADRAIN
+    assert terminal.calls[-1] == ("tcsetattr", 20, drain, "old settings")
+
+
+@pytest.mark.skipif(WIN, reason="Tests the termios based raw_terminal.")
+@pytest.mark.xfail(
+    raises=RuntimeError,
+    strict=True,
+    reason="raw_terminal swallows termios.error before yielding.",
+)
+def test_raw_terminal_termios_error_propagates(monkeypatch):
+    termios = click._termui_impl.termios
+    _FakeTerminal(monkeypatch, stdin_tty=True)
+
+    def tcgetattr(fd):
+        raise termios.error("not a terminal")
+
+    monkeypatch.setattr(termios, "tcgetattr", tcgetattr)
+
+    with pytest.raises(termios.error):
+        with click.termui.raw_terminal():
+            pass
+
+
+def _fake_unix_getchar_input(monkeypatch, data, stdout_tty):
+    reads = []
+
+    @contextlib.contextmanager
+    def raw_terminal():
+        yield 5
+
+    def read(fd, n):
+        reads.append((fd, n))
+        return data
+
+    stdout = io.StringIO()
+    stdin = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    monkeypatch.setattr(click._termui_impl, "raw_terminal", raw_terminal)
+    monkeypatch.setattr(click._termui_impl.os, "read", read)
+    monkeypatch.setattr(click._termui_impl, "isatty", lambda _: stdout_tty)
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stdout", stdout)
+    return reads, stdout
+
+
+@pytest.mark.skipif(WIN, reason="Tests the os.read based getchar.")
+@pytest.mark.parametrize(
+    ("echo", "stdout_tty", "expected_echo"),
+    [(False, True, ""), (True, False, ""), (True, True, "é")],
+)
+def test_getchar_unix(monkeypatch, echo, stdout_tty, expected_echo):
+    reads, stdout = _fake_unix_getchar_input(
+        monkeypatch, "é".encode(), stdout_tty=stdout_tty
+    )
+    monkeypatch.setattr(click.termui, "_getchar", None)
+    assert click.getchar(echo=echo) == "é"
+    assert reads == [(5, 32)]
+    assert stdout.getvalue() == expected_echo
+
+
+@pytest.mark.skipif(WIN, reason="Tests the os.read based getchar.")
+@pytest.mark.parametrize(
+    ("data", "exc"), [(b"\x03", KeyboardInterrupt), (b"\x04", EOFError)]
+)
+def test_getchar_unix_exceptions(monkeypatch, data, exc):
+    _fake_unix_getchar_input(monkeypatch, data, stdout_tty=False)
+
+    with pytest.raises(exc):
+        click._termui_impl.getchar(False)
+
+
+@pytest.mark.skipif(WIN, reason="Tests the os.read based getchar.")
+def test_getchar_unix_invalid_bytes_replaced(monkeypatch):
+    _fake_unix_getchar_input(monkeypatch, b"\xff", stdout_tty=False)
+    assert click._termui_impl.getchar(False) == "\ufffd"
+
+
+def test_getchar_caches_implementation(monkeypatch):
+    calls = []
+
+    def fake_getchar(echo):
+        calls.append(echo)
+        return "x"
+
+    monkeypatch.setattr(click._termui_impl, "getchar", fake_getchar)
+    monkeypatch.setattr(click.termui, "_getchar", None)
+    assert click.getchar(echo=True) == "x"
+    assert click.termui._getchar is fake_getchar
+    assert calls == [True]
+
+
+@pytest.mark.parametrize(("tty", "expected"), [(False, ""), (True, "\033[2J\033[1;1H")])
+def test_clear(runner, monkeypatch, tty, expected):
+    monkeypatch.setattr(click.termui, "isatty", lambda _: tty)
+
+    @click.command()
+    def cli():
+        click.clear()
+
+    result = runner.invoke(cli, color=True)
+    assert result.output == expected
+
+
+@pytest.mark.parametrize(
+    ("stdin_tty", "stdout_tty"), [(False, True), (True, False), (False, False)]
+)
+def test_pause_not_a_terminal(monkeypatch, capsys, stdin_tty, stdout_tty):
+    def fake_isatty(stream):
+        if stream is sys.stdin:
+            return stdin_tty
+        return stdout_tty
+
+    def fail_getchar():
+        raise AssertionError("pause should not wait for a key")
+
+    monkeypatch.setattr(click.termui, "isatty", fake_isatty)
+    monkeypatch.setattr(click.termui, "getchar", fail_getchar)
+    click.pause()
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    ("info", "expected"),
+    [
+        (None, "Press any key to continue...\n"),
+        ("", ""),
+        ("Wait", "Wait\n"),
+    ],
+)
+@pytest.mark.parametrize("key_exc", [None, KeyboardInterrupt, EOFError])
+def test_pause(monkeypatch, capsys, info, expected, key_exc):
+    keys = []
+
+    def fake_getchar():
+        keys.append(True)
+        if key_exc is not None:
+            raise key_exc()
+        return " "
+
+    monkeypatch.setattr(click.termui, "isatty", lambda _: True)
+    monkeypatch.setattr(click.termui, "getchar", fake_getchar)
+    click.pause(info)
+    assert capsys.readouterr().out == expected
+    assert keys == [True]
+
+
+def test_prompt_default_file_shows_name(runner, tmp_path):
+    path = tmp_path / "default.txt"
+    path.write_text("data", encoding="utf-8")
+
+    @click.command()
+    def cli():
+        with open(path, encoding="utf-8") as f:
+            click.prompt("File", default=f, show_default=True)
+
+    result = runner.invoke(cli, input="\n")
+    assert not result.exception
+    assert result.output.startswith(f"File [{path}]: \n")
+
+
+def test_prompt_default_lazy_file_shows_name(runner, tmp_path):
+    path = tmp_path / "default.txt"
+
+    @click.command()
+    def cli():
+        lazy = _LazyFile(str(path), "w")
+        click.prompt("File", default=lazy, show_default=True)
+
+    result = runner.invoke(cli, input="\n")
+    assert not result.exception
+    assert result.output.startswith(f"File [{path}]: \n")
+
+
+def test_format_default_file_without_name():
+    default = io.BytesIO()
+    assert click.termui._format_default(default) is default
+
+
+@pytest.mark.parametrize(
+    ("input", "expected", "aborted"),
+    [("y\n", True, False), ("n\n", False, True), ("\n", False, True)],
+)
+def test_confirm_abort(runner, input, expected, aborted):
+    @click.command()
+    def cli():
+        click.echo(click.confirm("Continue?", abort=True))
+
+    result = runner.invoke(cli, input=input)
+    if aborted:
+        assert result.exit_code == 1
+        assert result.output.endswith("Aborted!\n")
+    else:
+        assert result.exception is None
+        assert result.output.endswith(f"{expected}\n")
+
+
+def test_confirmation_prompt_repeats_empty_confirmation(runner):
+    @click.command()
+    def cli():
+        click.echo(click.prompt("Value", confirmation_prompt=True))
+
+    result = runner.invoke(cli, input="a\n\na\n")
+    assert not result.exception
+    assert result.output.count("Repeat for confirmation: ") == 2
+    assert result.output.endswith("a\n")
+    assert "do not match" not in result.output
+
+
+def test_hidden_prompt_func_uses_getpass(monkeypatch):
+    import getpass
+
+    prompts = []
+
+    def fake_getpass(prompt):
+        prompts.append(prompt)
+        return "secret"
+
+    monkeypatch.setattr(getpass, "getpass", fake_getpass)
+    assert click.termui.hidden_prompt_func("Password: ") == "secret"
+    assert prompts == ["Password: "]
+
+
+def test_mask_hidden_input_empty_value():
+    message = click.termui._mask_hidden_input("got '' in a b", "")
+    assert message == "got '***' in a b"
