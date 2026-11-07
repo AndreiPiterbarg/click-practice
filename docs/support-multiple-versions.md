@@ -41,6 +41,7 @@ import click
 
 F = t.TypeVar("F", bound=t.Callable[..., t.Any])
 
+
 def add_ctx_arg(f: F) -> F:
     @functools.wraps(f)
     def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Any:

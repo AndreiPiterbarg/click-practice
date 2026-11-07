@@ -16,14 +16,14 @@ Example:
 ```python
 import click
 
-click.echo('Hello World!')
+click.echo("Hello World!")
 ```
 
 It can output both text and binary data. It will emit a trailing newline by default, which needs to be suppressed by
 passing `nl=False`:
 
 ```python
-click.echo(b'\xe2\x98\x83', nl=False)
+click.echo(b"\xe2\x98\x83", nl=False)
 ```
 
 Last but not least {func}`echo` uses click's intelligent internal output streams to stdout and stderr which support
@@ -42,7 +42,7 @@ information see {doc}`wincmd`.
 You can also easily print to standard error by passing `err=True`:
 
 ```python
-click.echo('Hello World!', err=True)
+click.echo("Hello World!", err=True)
 ```
 
 (ansi-colors)=
@@ -70,17 +70,17 @@ For styling a string, the {func}`style` function can be used:
 ```python
 import click
 
-click.echo(click.style('Hello World!', fg='green'))
-click.echo(click.style('Some more text', bg='blue', fg='white'))
-click.echo(click.style('ATTENTION', blink=True, bold=True))
+click.echo(click.style("Hello World!", fg="green"))
+click.echo(click.style("Some more text", bg="blue", fg="white"))
+click.echo(click.style("ATTENTION", blink=True, bold=True))
 ```
 
 The combination of {func}`echo` and {func}`style` is also available in a single function called {func}`secho`:
 
 ```python
-click.secho('Hello World!', fg='green')
-click.secho('Some more text', bg='blue', fg='white')
-click.secho('ATTENTION', blink=True, bold=True)
+click.secho("Hello World!", fg="green")
+click.secho("Some more text", bg="blue", fg="white")
+click.secho("ATTENTION", blink=True, bold=True)
 ```
 
 ## Pager Support
@@ -144,6 +144,7 @@ what the name suggests: it clears the entire visible screen in a platform-agnost
 
 ```python
 import click
+
 click.clear()
 ```
 
@@ -166,15 +167,15 @@ Example:
 ```python
 import click
 
-click.echo('Continue? [yn] ', nl=False)
+click.echo("Continue? [yn] ", nl=False)
 c = click.getchar()
 click.echo()
-if c == 'y':
-    click.echo('We will go on')
-elif c == 'n':
-    click.echo('Abort!')
+if c == "y":
+    click.echo("We will go on")
+elif c == "n":
+    click.echo("Abort!")
 else:
-    click.echo('Invalid input :(')
+    click.echo("Invalid input :(")
 ```
 
 Note that this reads raw input, which means that things like arrow keys will show up in the platform's native escape
@@ -198,6 +199,7 @@ Example:
 
 ```python
 import click
+
 click.pause()
 ```
 
@@ -215,11 +217,12 @@ Example usage:
 ```python
 import click
 
+
 def get_commit_message():
-    MARKER = '# Everything below is ignored\n'
-    message = click.edit('\n\n' + MARKER)
+    MARKER = "# Everything below is ignored\n"
+    message = click.edit("\n\n" + MARKER)
     if message is not None:
-        return message.split(MARKER, 1)[0].rstrip('\n')
+        return message.split(MARKER, 1)[0].rstrip("\n")
 ```
 
 Alternatively, the function can also be used to launch editors for files by a specific filename. In this case, the
@@ -229,7 +232,8 @@ Example usage:
 
 ```python
 import click
-click.edit(filename='/etc/passwd')
+
+click.edit(filename="/etc/passwd")
 ```
 
 ## Launching Applications
@@ -275,16 +279,16 @@ Example:
 ```python
 import click
 
-stdout = click.open_file('-', 'w')
-test_file = click.open_file('test.txt', 'w')
+stdout = click.open_file("-", "w")
+test_file = click.open_file("test.txt", "w")
 ```
 
 If stdin or stdout are returned, the return value is wrapped in a special file where the context manager will prevent
 the closing of the file. This makes the handling of standard streams transparent and you can always use it like this:
 
 ```python
-with click.open_file(filename, 'w') as f:
-    f.write('Hello World!\n')
+with click.open_file(filename, "w") as f:
+    f.write("Hello World!\n")
 ```
 
 ## Finding Application Folders
@@ -348,8 +352,7 @@ calculation of remaining time requires that the iterable has a length. If it doe
 length, you can explicitly provide it:
 
 ```python
-with click.progressbar(all_the_users_to_process,
-                       length=number_of_users) as bar:
+with click.progressbar(all_the_users_to_process, length=number_of_users) as bar:
     for user in bar:
         modify_the_user(user)
 ```
@@ -369,9 +372,9 @@ with click.progressbar([1, 2, 3]) as bar:
 Another useful feature is to associate a label with the progress bar which will be shown preceding the progress bar:
 
 ```python
-with click.progressbar(all_the_users_to_process,
-                       label='Modifying user accounts',
-                       length=number_of_users) as bar:
+with click.progressbar(
+    all_the_users_to_process, label="Modifying user accounts", length=number_of_users
+) as bar:
     for user in bar:
         modify_the_user(user)
 ```
@@ -381,8 +384,7 @@ need to specify the length (and no iterable), and use the update method on the c
 directly over it:
 
 ```python
-with click.progressbar(length=total_size,
-                       label='Unzipping archive') as bar:
+with click.progressbar(length=total_size, label="Unzipping archive") as bar:
     for archive in zip_file:
         archive.extract()
         bar.update(archive.size)

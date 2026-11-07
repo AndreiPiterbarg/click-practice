@@ -18,18 +18,18 @@ Click has to take extra care to support Unicode text in different environments.
   This is not supported:
 
   ```python
-  sys.stdin = io.StringIO('Input here')
+  sys.stdin = io.StringIO("Input here")
   sys.stdout = io.StringIO()
   ```
 
   Instead you need to do this:
 
   ```python
-  input = 'Input here'
-  in_stream = io.BytesIO(input.encode('utf-8'))
-  sys.stdin = io.TextIOWrapper(in_stream, encoding='utf-8')
+  input = "Input here"
+  in_stream = io.BytesIO(input.encode("utf-8"))
+  sys.stdin = io.TextIOWrapper(in_stream, encoding="utf-8")
   out_stream = io.BytesIO()
-  sys.stdout = io.TextIOWrapper(out_stream, encoding='utf-8')
+  sys.stdout = io.TextIOWrapper(out_stream, encoding="utf-8")
   ```
 
   Remember in that case, you need to use `out_stream.getvalue()` and not `sys.stdout.getvalue()` if you want to access

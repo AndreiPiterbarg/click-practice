@@ -74,14 +74,14 @@ To manually ask for user input, you can use the {func}`prompt` function. By defa
 you can ask for any other type. For instance, you can ask for a valid integer:
 
 ```python
-value = click.prompt('Please enter a valid integer', type=int)
+value = click.prompt("Please enter a valid integer", type=int)
 ```
 
 Additionally, the type will be determined automatically if a default value is provided. For instance, the following will
 only accept floats:
 
 ```python
-value = click.prompt('Please enter a number', default=42.0)
+value = click.prompt("Please enter a number", default=42.0)
 ```
 
 ## Optional Prompts
@@ -113,15 +113,15 @@ To ask if a user wants to continue with an action, the {func}`confirm` function 
 the result of the prompt as a boolean value:
 
 ```python
-if click.confirm('Do you want to continue?'):
-    click.echo('Well done!')
+if click.confirm("Do you want to continue?"):
+    click.echo("Well done!")
 ```
 
 There is also the option to make the function automatically abort the execution of the program if it does not return
 `True`:
 
 ```python
-click.confirm('Do you want to continue?', abort=True)
+click.confirm("Do you want to continue?", abort=True)
 ```
 
 ## Dynamic Defaults for Prompts
@@ -137,11 +137,9 @@ environment:
 ```python
 import os
 
+
 @click.command()
-@click.option(
-    "--username", prompt=True,
-    default=lambda: os.environ.get("USER", "")
-)
+@click.option("--username", prompt=True, default=lambda: os.environ.get("USER", ""))
 def hello(username):
     click.echo(f"Hello, {username}!")
 ```

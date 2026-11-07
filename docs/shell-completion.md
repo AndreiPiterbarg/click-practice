@@ -151,9 +151,9 @@ class EnvVarType(ParamType[str]):
 
     def shell_complete(self, ctx, param, incomplete):
         return [
-            CompletionItem(name)
-            for name in os.environ if name.startswith(incomplete)
+            CompletionItem(name) for name in os.environ if name.startswith(incomplete)
         ]
+
 
 @click.command()
 @click.option("--ev", type=EnvVarType())
@@ -180,6 +180,7 @@ In this example, the command will suggest environment variables that start with 
 ```python
 def complete_env_vars(ctx, param, incomplete):
     return [k for k in os.environ if k.startswith(incomplete)]
+
 
 @click.command()
 @click.argument("name", shell_complete=complete_env_vars)
@@ -225,6 +226,7 @@ _mysh_source = """\
 call-on-complete %(foo_bar)s %(complete_func)s
 """
 
+
 @add_completion_class
 class MyshComplete(ShellComplete):
     name = "mysh"
@@ -239,6 +241,7 @@ must return a `(args, incomplete)` tuple.
 ```python
 import os
 from click.parser import split_arg_string
+
 
 class MyshComplete(ShellComplete):
     ...

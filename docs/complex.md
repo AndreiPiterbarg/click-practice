@@ -118,8 +118,8 @@ Let's add our first child command to it, the clone command:
 
 ```python
 @cli.command()
-@click.argument('src')
-@click.argument('dest', required=False)
+@click.argument("src")
+@click.argument("dest", required=False)
 def clone(src, dest):
     pass
 ```
@@ -133,8 +133,8 @@ the repo):
 
 ```python
 @cli.command()
-@click.argument('src')
-@click.argument('dest', required=False)
+@click.argument("src")
+@click.argument("dest", required=False)
 @click.pass_obj
 def clone(repo, src, dest):
     pass
@@ -174,8 +174,8 @@ repo instead of something else:
 
 ```python
 @cli.command()
-@click.argument('src')
-@click.argument('dest', required=False)
+@click.argument("src")
+@click.argument("dest", required=False)
 @pass_repo
 def clone(repo, src, dest):
     pass
@@ -249,6 +249,7 @@ stores a mapping from subcommand names to the information for importing them.
 import importlib
 import click
 
+
 class LazyGroup(click.Group):
     def __init__(self, *args, lazy_subcommands=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -295,6 +296,7 @@ subcommands like so:
 import click
 from lazy_group import LazyGroup
 
+
 @click.group(
     cls=LazyGroup,
     lazy_subcommands={"foo": "foo.cli", "bar": "bar.cli"},
@@ -308,6 +310,7 @@ def cli():
 # in foo.py
 import click
 
+
 @click.group(help="foo command for lazy example")
 def cli():
     pass
@@ -317,6 +320,7 @@ def cli():
 # in bar.py
 import click
 from lazy_group import LazyGroup
+
 
 @click.group(
     cls=LazyGroup,
@@ -330,6 +334,7 @@ def cli():
 ```python
 # in baz.py
 import click
+
 
 @click.group(help="baz command for lazy example")
 def cli():

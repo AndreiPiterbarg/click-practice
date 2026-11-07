@@ -47,6 +47,7 @@ Where ``app.py`` contains a Click command:
 ```python
 import click
 
+
 @click.command()
 @click.argument("name", default="World")
 @click.option("--count", default=1, help="Number of times to greet.")
