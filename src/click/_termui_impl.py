@@ -851,7 +851,7 @@ def open_url(url: str, wait: bool = False, locate: bool = False) -> int:
             url = os.path.dirname(_unquote_file(url)) or "."
         else:
             url = _unquote_file(url)
-        c = subprocess.Popen(["xdg-open", url])
+        c = subprocess.Popen(["xdg-open", url])  # noqa: S603, S607  # xdg-open is resolved via PATH intentionally
         if wait:
             return c.wait()
         return 0
