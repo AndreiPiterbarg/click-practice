@@ -32,7 +32,7 @@ from gettext import gettext as _
 
 from ._compat import _NonClosingTextIOWrapper
 
-assert sys.platform == "win32"
+assert sys.platform == "win32"  # noqa: S101 - platform guard for Windows-only module
 import msvcrt  # noqa: E402
 from ctypes import windll  # noqa: E402
 from ctypes import WINFUNCTYPE  # noqa: E402
